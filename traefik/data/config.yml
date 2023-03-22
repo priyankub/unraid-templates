@@ -1,0 +1,286 @@
+#I have DNS rewrite set in my AdGuard 
+#instance which routes local.example.com to
+#my Unraid server that runs traefik
+udp:
+  routers:
+    wireguard:
+      entryPoints:
+        - "udp"
+      service: wireguard
+
+  services:
+    wireguard:
+      loadBalancer:
+        servers:
+          - address: "192.168.0.5:64356" #Unraid Server IP, and Wireguard Port
+http:
+ #region routers 
+  routers:
+    unraid:
+      entryPoints:
+        - http
+        - https
+      rule: "Host(`unraid.local.example.com`) || Host(`unraid.example.com`)"
+      middlewares:
+        - default-headers@file
+        - forward-auth@docker
+      tls:
+        options: default
+      service: unraid
+    proxmox:
+      entryPoints:
+        - http
+        - https
+      rule: "Host(`proxmox.local.example.com`) || Host(`proxmox.example.com`)"
+      middlewares:
+        - default-headers@file
+        - forward-auth@docker
+      tls:
+        options: default
+      service: proxmox
+    machinaris:
+      entryPoints:
+        - http
+        - https
+      rule: "Host(`machinaris.local.example.com`) || Host(`machinaris.example.com`)"
+      middlewares:
+        - default-headers@file
+        - forward-auth@docker
+      tls:
+        options: default
+      service: machinaris
+    adguard:
+      entryPoints:
+        - http
+        - https
+      rule: "Host(`adguard.example.com`)"
+      middlewares:
+        - default-headers@file
+        - forward-auth@docker
+      tls:
+        options: default
+      service: adguard
+    adguard_doh:
+      entryPoints:
+        - http
+        - https
+      rule: "(Host(`adguard.example.com`) && Path(`/dns-query`))"
+      middlewares:
+        - default-headers@file
+      tls:
+        options: default
+      service: adguard_doh
+    adguard-local:
+      entryPoints:
+        - http
+        - https
+      rule: "Host(`adguard.local.example.com`)"
+      middlewares:
+        - default-headers@file
+        - forward-auth@docker
+      tls:
+        options: default
+      service: adguard
+    adguard2:
+      entryPoints:
+        - http
+        - https
+      rule: "Host(`adguard2.local.example.com`)"
+      middlewares:
+        - default-headers@file
+        - forward-auth@docker
+      tls:
+        options: default
+      service: adguard2
+    plex:
+      entryPoints:
+        - http
+        - https
+      rule: "Host(`plex.example.com`)"
+      middlewares:
+        - default-headers@file
+      tls:
+        options: default
+      service: plex
+    plex-local:
+      entryPoints:
+        - http
+        - https
+      rule: "Host(`plex.local.example.com`)"
+      middlewares:
+        - default-headers@file
+      tls:
+        options: default
+      service: plex
+    homeassistant-local:
+      entryPoints:
+        - http
+        - https
+      rule: "Host(`homeassistant.local.example.com`)"
+      middlewares:
+        - homeassistant-headers
+        - https-redirect@file
+      tls:
+        options: default
+      service: homeassistant-local
+    homeassistant:
+      entryPoints:
+        - http
+        - https
+      rule: "Host(`homeassistant.example.com`)"
+      middlewares:
+        - homeassistant-headers
+        - https-redirect@file
+      tls:
+        options: default
+      service: homeassistant
+    print:
+      entryPoints:
+        - http
+        - https
+      rule: "Host(`print.local.example.com`)"
+      middlewares:
+        - default-headers@file
+        - https-redirect@file
+      tls:
+        options: default
+      service: print
+
+#endregion
+#region services
+  services:
+    unraid:
+      loadBalancer:
+        servers:
+          - url: "https://192.168.0.5:1443" 
+          #IP Address of my Unraid server. I have
+          #the unraid UI set at port 1443, so 
+          #that it does not clash with traefik or
+          #any other reverse proxy
+        passHostHeader: true
+    proxmox:
+      loadBalancer:
+        servers:
+          - url: "https://192.168.0.5:8006"
+          #Location of my Proxmox server
+        passHostHeader: true
+    machinaris:
+      loadBalancer:
+        servers:
+          - url: "http://192.168.0.189:8926"
+          #Location of my server running Machinaris
+        passHostHeader: true
+    adguard:
+      loadBalancer:
+        servers:
+          - url: "https://192.168.0.3:443"
+          #Location of my AdGuard server
+        passHostHeader: true
+    adguard_doh:
+      loadBalancer:
+        servers:
+          - url: "https://192.168.0.3:443/dns-query"
+          #Location of my AdGuard server
+        passHostHeader: true
+    adguard2:
+      loadBalancer:
+        servers:
+          - url: "http://192.168.0.4:80"
+          #Location of my second AdGuard server
+        passHostHeader: true
+    plex:
+      loadBalancer:
+        servers:
+          - url: "https://192.168.0.5:32400"
+          #Location of my Plex server in Unraid
+        passHostHeader: true
+    homeassistant-local:
+      loadBalancer:
+        servers:
+          - url: "http://192.168.9.208:8123"
+          #Location of my Home Assistant instance
+    homeassistant:
+      loadBalancer:
+        servers:
+          - url: "http://192.168.3.208:8123"
+          #Location of my Home Assistant instance
+#endregion
+  middlewares:
+    addprefix-pihole:
+      addPrefix:
+        prefix: "/admin"
+
+    https-redirect:
+      redirectScheme:
+        scheme: https
+
+    #The following is required only if you use Crowdsec
+    crowdsec-bouncer:
+      forwardauth:
+        address: http://bouncer-traefik:8080/api/v1/forwardAuth
+        trustForwardHeader: true
+
+  # Traefik Real-IP - List of Cloudflare IPs so that real IP can be identified if you are using Cloudflare
+    real-ip:
+      plugin:
+        traefik-real-ip:
+          excludednets:
+            - "1.1.1.1/24"
+            - "173.245.48.0/20"
+            - "103.21.244.0/22"
+            - "103.22.200.0/22"
+            - "103.31.4.0/22"
+            - "141.101.64.0/18"
+            - "108.162.192.0/18"
+            - "190.93.240.0/20"
+            - "188.114.96.0/20"
+            - "197.234.240.0/22"
+            - "198.41.128.0/17"
+            - "162.158.0.0/15"
+            - "104.16.0.0/13"
+            - "104.24.0.0/14"
+            - "172.64.0.0/13"
+            - "131.0.72.0/22"
+    default-headers:
+      headers:
+        frameDeny: true
+        sslRedirect: true
+        browserXssFilter: true
+        contentTypeNosniff: true
+        forceSTSHeader: true
+        stsIncludeSubdomains: true
+        stsPreload: true
+        stsSeconds: 63072000
+        customFrameOptionsValue: SAMEORIGIN
+        customRequestHeaders:
+          X-Forwarded-Proto: https
+
+    homeassistant-headers:
+      headers:
+        browserXssFilter: true
+        contentTypeNosniff: true
+        frameDeny: true
+        sslRedirect: true
+        stsIncludeSubdomains: true
+        stsPreload: true
+        stsSeconds: 63072000
+        customFrameOptionsValue: SAMEORIGIN
+
+    default-whitelist:
+      ipWhiteList:
+        sourceRange:
+        - "10.253.0.0/24"
+        - "192.168.0.0/16"
+        - "172.16.0.0/12"
+
+    secured:
+      chain:
+        middlewares:
+        - default-whitelist@file
+        - default-headers@file
+tls:
+  options:
+    default:
+      minVersion: VersionTLS12
+    tlsv13only:
+      minVersion: VersionTLS13
